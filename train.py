@@ -6,7 +6,7 @@ from env1 import A1Env
 from stable_baselines3.common.env_checker import check_env
 
 
-env = A1Env(xml_path="./unitree_a1/scene.xml", render_mode=None)
+env = A1Env(render_mode=None)
 check_env(env, warn=True)
 print("✅ check_env passed")
 
@@ -21,7 +21,7 @@ model = PPO(
     n_steps=2048,
     batch_size=64,
 )
-model.learn(total_timesteps=10_000_000)
+model.learn(total_timesteps=10_000_000, progress_bar=True)
 
 model.save("ppo_a1")
 vec_env.save("vecnormalize_a1.pkl")
