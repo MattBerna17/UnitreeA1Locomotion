@@ -4,3 +4,10 @@ main_new.py
 train_new.py
 runs/
 _main.py
+.venv/
+__pycache__/
+*.py[cod]
+tensorboard_logs/
+MUJOCO_LOG.TXT
+*.mp4
+*.mov
