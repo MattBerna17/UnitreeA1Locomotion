@@ -55,21 +55,25 @@ class A1Env(MujocoEnv):
         # weights for the reward and cost functions
         self.reward_weights = {
             "linear_vel_tracking": 2.0, # main goal whose weight encourages the model to move
-            "angular_vel_tracking": 1.0,
-            "healthy": 0.0, # currently does not contribute
-            "feet_airtime": 1.0, # encourages the model to keep legs up. prevents the robot from dragging itself
+            "angular_vel_tracking": 0.1,
+            "healthy": 0.05,
+            "trot": 0.5, # reward positively the trotting movement
+            "feet_airtime": 0.2, # encourages the model to keep legs up. prevents the robot from dragging itself
         }
         self.cost_weights = {
             "torque": 0.0002,
-            "vertical_vel": 2.0, # penalizes useless jumps and encourages stable z position
+            "vertical_vel": 0.05, # penalizes useless jumps and encourages stable z position
             "xy_angular_vel": 0.05, # if it rotates on x or y
             "action_rate": 0.01, # changes action too often
-            "joint_limit": 10.0, # penalize exagerated joints movements
+            "joint_limit": 0.05, # penalize exagerated joints movements
             "joint_velocity": 0.01,
             "joint_acceleration": 2.5e-7, 
-            "orientation": 1.0,
-            "collision": 1.0,
-            "default_joint_position": 0.1
+            "orientation": 0.01,
+            "collision": 0.01,
+            "default_joint_position": 0.0,
+            "body_height": 0.001,
+            "flight": 0.01,
+            "foot_slip": 0.05
         }
 
         self._gravity_vector = np.array(self.model.opt.gravity) # [0, 0, -9.81] gravity on mujoco simulation environment
@@ -77,8 +81,8 @@ class A1Env(MujocoEnv):
 
         # vx (m/s), vy (m/s), wz (rad/s)
         # desider velocity 0.5 m/s on the x axis, and avoid movement on the y and z axis
-        self._desired_velocity_min = np.array([0.5, -0.0, -0.0])
-        self._desired_velocity_max = np.array([0.5, 0.0, 0.0])
+        self._desired_velocity_min = np.array([2.5, -0.0, -0.0])
+        self._desired_velocity_max = np.array([2.5, 0.0, 0.0])
         self._desired_velocity = self._sample_desired_vel()  # [0.5, 0.0, 0.0]
         # homogeneous values in input to the NN
         self._obs_scale = {
@@ -90,10 +94,10 @@ class A1Env(MujocoEnv):
         self._tracking_velocity_sigma = 0.25 # how much the reward lowers when real velocity drifts away from target velocity
 
         # metrics used to determine if the episode should be terminated
-        self._healthy_z_range = (0.22, 0.65) # z < 0.22 probably fallen. z > 0.65 probably jumping or exploded
+        self._healthy_z_range = (0.10, 0.80) # z < 0.22 probably fallen. z > 0.65 probably jumping or exploded
         # limitations on the rotation on x and y axis to avoid falling
-        self._healthy_pitch_range = (-np.deg2rad(10), np.deg2rad(10))
-        self._healthy_roll_range = (-np.deg2rad(10), np.deg2rad(10))
+        self._healthy_pitch_range = (-np.deg2rad(25), np.deg2rad(25))
+        self._healthy_roll_range = (-np.deg2rad(25), np.deg2rad(25))
 
         self._feet_air_time = np.zeros(4) # how long each foot has been in the air
         self._last_contacts = np.zeros(4) # if each foot, during the previous timestep, was in contact with something
@@ -172,6 +176,10 @@ class A1Env(MujocoEnv):
 
         self._last_action = action
 
+        if terminated:
+            # print(self._death_cause)
+            pass
+
         return observation, reward, terminated, truncated, info
 
     @property
@@ -181,13 +189,18 @@ class A1Env(MujocoEnv):
         """
         state = self.state_vector() # from MujocoEnv, the state used by the environment to check health of the robot during simulation
         min_z, max_z = self._healthy_z_range
-        is_healthy = np.isfinite(state).all() and min_z <= state[2] <= max_z
-
+        z_ok = min_z <= state[2] <= max_z
+        w, x, y, z = self.data.qpos[3:7]
+        roll, pitch, _ = self.euler_from_quaternion(w, x, y, z)
         min_roll, max_roll = self._healthy_roll_range
-        is_healthy = is_healthy and min_roll <= state[4] <= max_roll
-
+        roll_ok = min_roll <= roll <= max_roll
         min_pitch, max_pitch = self._healthy_pitch_range
-        is_healthy = is_healthy and min_pitch <= state[5] <= max_pitch
+        pitch_ok = min_pitch <= pitch <= max_pitch
+
+        is_healthy = np.isfinite(state).all() and z_ok and roll_ok and pitch_ok
+
+        if not is_healthy:
+            self._death_cause = f"z_ok={z_ok}(z={state[2]:.2f}) roll_ok={roll_ok}(roll={np.rad2deg(roll):.1f}°) pitch_ok={pitch_ok}(pitch={np.rad2deg(pitch):.1f}°)"
 
         return is_healthy
 
@@ -210,8 +223,8 @@ class A1Env(MujocoEnv):
         Get the projected gravity vector acting on the robot
         (magnitude of the vector is still 1, since it is clipped on +-1)
         """
-        base_id = self.model.body("base").id
-        R_body_to_world = self.data.xmat[base_id].reshape(3, 3) # take the body to world transition matrix in a 3x3 format
+        trunk_id = self.model.body("trunk").id
+        R_body_to_world = self.data.xmat[trunk_id].reshape(3, 3) # take the body to world transition matrix in a 3x3 format
         gravity_world = np.array([0.0, 0.0, -1.0]) # base gravity of the world
         return R_body_to_world.T @ gravity_world # transpose the body-to-world rotation matrix (obtain the world to body transformation) and multiply by the gravity of the world to get the gravity of the body
 
@@ -243,30 +256,36 @@ class A1Env(MujocoEnv):
 
     @property
     def feet_air_time_reward(self):
-        """Award strides depending on their duration only when the feet makes contact with the ground"""
-        feet_contact_force_mag = self.feet_contact_forces
-        curr_contact = feet_contact_force_mag > 1.0
-        contact_filter = np.logical_or(curr_contact, self._last_contacts)
+        """
+        Get reward based on the time the feet has been in the air
+        """
+        curr_contact = np.asarray(self.feet_contact_forces > 1.0, dtype=bool)
+        last_contact = np.asarray(self._last_contacts, dtype=bool)
+        first_contact = curr_contact & ~(last_contact)
+        self._feet_air_time[~curr_contact] += self.dt # add the dt of time in case of no current contact
+        air_time = self._feet_air_time.copy()
+        target = 0.25 # expect a mean time in air for a leg to be 0.25 if desired velocity is 0.5m/s
+        sigma = 0.10
+        reward = np.sum(np.exp(-np.square(air_time - target) / sigma**2) * first_contact) # exponential reward
+        self._feet_air_time[curr_contact] = 0.0 # restore time for contact surfaces
         self._last_contacts = curr_contact
 
-        # if feet_air_time is > 0 (feet was in the air) and contact_filter detects a contact with the ground
-        # then it is the first contact of this stride
-        first_contact = (self._feet_air_time > 0.0) * contact_filter
-        self._feet_air_time += self.dt
-
-        # Award the feets that have just finished their stride (first step with contact)
-        air_time_reward = np.sum((self._feet_air_time - 1.0) * first_contact)
-        # No award if the desired velocity is very low (i.e. robot should remain stationary and feet shouldn't move)
-        air_time_reward *= np.linalg.norm(self._desired_velocity[:2]) > 0.1
-
-        # zero-out the air time for the feet that have just made contact (i.e. contact_filter==1)
-        self._feet_air_time *= ~contact_filter
-
-        return air_time_reward
+        return reward
 
     @property
     def healthy_reward(self):
         return self.is_healthy
+
+    @property
+    def trot_reward(self):
+        """
+        Reward the diagonal pattern of movement in the trot
+        """
+        curr_contact = self.feet_contact_forces > 1.0
+        diag1 = curr_contact[0] and curr_contact[3]
+        diag2 = curr_contact[1] and curr_contact[2]
+        trot = float(diag1 ^ diag2) # exclusively diagonal 1 legs in sync or diagonal 2 legs
+        return trot
 
     ######### Negative Reward functions #########
     @property  # TODO: Not used
@@ -274,6 +293,31 @@ class A1Env(MujocoEnv):
         return np.sum(
             (self.feet_contact_forces - self._max_contact_force).clip(min=0.0)
         )
+
+    @property
+    def foot_slip_cost(self):
+        """
+        Penalize the horizontal movement when foot touch the ground
+        """
+        curr_contact = self.feet_contact_forces > 1.0
+        feet_xy_vel = self.data.cvel[self._cfrc_ext_feet_indices][:, 3:5]  # linear velocity for x and y
+        return np.sum(np.square(feet_xy_vel) * curr_contact[:, None])
+
+    @property
+    def flight_cost(self):
+        """
+        Penalize when none of the legs is on the ground
+        """
+        contact = self.feet_contact_forces > 1.0
+        return float(not np.any(contact))
+
+    @property
+    def body_height_cost(self):
+        """
+        Cost function to penalize eccessive height of the trunk of the robot
+        """
+        target_height = 0.27
+        return np.square(self.data.qpos[2] - target_height)
 
     @property
     def non_flat_base_cost(self):
@@ -350,14 +394,20 @@ class A1Env(MujocoEnv):
         feet_air_time_reward = (
             self.feet_air_time_reward * self.reward_weights["feet_airtime"]
         )
+        trot_reward = self.trot_reward * self.reward_weights["trot"]
         rewards = (
             linear_vel_tracking_reward
             + angular_vel_tracking_reward
             + healthy_reward
             + feet_air_time_reward
+            + trot_reward
         )
 
         # Negative Costs
+        body_height_cost = (
+            self.body_height_cost
+            * self.cost_weights["body_height"]
+        )
         ctrl_cost = self.torque_cost * self.cost_weights["torque"]
         action_rate_cost = (
             self.action_rate_cost(action) * self.cost_weights["action_rate"]
@@ -381,8 +431,11 @@ class A1Env(MujocoEnv):
             self.default_joint_position_cost
             * self.cost_weights["default_joint_position"]
         )
+        flight_cost = self.flight_cost * self.cost_weights["flight"]
+        foot_slip_cost = self.foot_slip_cost * self.cost_weights["foot_slip"]
         costs = (
             ctrl_cost
+            + body_height_cost
             + action_rate_cost
             + vertical_vel_cost
             + xy_angular_vel_cost
@@ -390,14 +443,22 @@ class A1Env(MujocoEnv):
             + joint_acceleration_cost
             + orientation_cost
             + default_joint_position_cost
+            + flight_cost
+            + foot_slip_cost
         )
 
-        reward = max(0.0, rewards - costs)
+        reward = rewards - costs
         # reward = rewards - self.curriculum_factor * costs
         reward_info = {
             "linear_vel_tracking_reward": linear_vel_tracking_reward,
+            "trot_reward": trot_reward,
+            "feet_air_time_reward": feet_air_time_reward,
             "reward_ctrl": -ctrl_cost,
             "reward_survive": healthy_reward,
+            "foot_slip_cost": -foot_slip_cost,
+            "body_height_cost": -body_height_cost,
+            "rewards": rewards,
+            "costs": costs
         }
 
         return reward, reward_info
@@ -432,8 +493,6 @@ class A1Env(MujocoEnv):
                 last_action, # to produce a smoother sequence of commands (and we penalize the difference with respect to the previous action taken by the policy)
             )
         ).clip(-self._clip_obs_threshold, self._clip_obs_threshold)
-
-        print(curr_obs.shape)
 
         return curr_obs
 
