@@ -55,22 +55,22 @@ class A1Env(MujocoEnv):
         # weights for the reward and cost functions
         self.reward_weights = {
             "linear_vel_tracking": 2.0, # main goal whose weight encourages the model to move
-            "angular_vel_tracking": 0.1,
+            "angular_vel_tracking": 1.0,
             "healthy": 0.05,
             "trot": 0.5, # reward positively the trotting movement
-            "feet_airtime": 0.2, # encourages the model to keep legs up. prevents the robot from dragging itself
+            "feet_airtime": 1.0, # encourages the model to keep legs up. prevents the robot from dragging itself
         }
         self.cost_weights = {
             "torque": 0.0002,
-            "vertical_vel": 0.05, # penalizes useless jumps and encourages stable z position
+            "vertical_vel": 2.0, # penalizes useless jumps and encourages stable z position
             "xy_angular_vel": 0.05, # if it rotates on x or y
             "action_rate": 0.01, # changes action too often
-            "joint_limit": 0.05, # penalize exagerated joints movements
+            "joint_limit": 10.0, # penalize exagerated joints movements
             "joint_velocity": 0.01,
             "joint_acceleration": 2.5e-7, 
-            "orientation": 0.01,
-            "collision": 0.01,
-            "default_joint_position": 0.0,
+            "orientation": 1.0,
+            "collision": 1.0,
+            "default_joint_position": 0.1,
             "body_height": 0.001,
             "flight": 0.01,
             "foot_slip": 0.05
@@ -81,9 +81,9 @@ class A1Env(MujocoEnv):
 
         # vx (m/s), vy (m/s), wz (rad/s)
         # desider velocity 0.5 m/s on the x axis, and avoid movement on the y and z axis
-        self._desired_velocity_min = np.array([2.5, -0.0, -0.0])
-        self._desired_velocity_max = np.array([2.5, 0.0, 0.0])
-        self._desired_velocity = self._sample_desired_vel()  # [0.5, 0.0, 0.0]
+        self._desired_velocity_min = np.array([0.3, -0.0, -0.0])
+        self._desired_velocity_max = np.array([0.3, 0.0, 0.0])
+        self._desired_velocity = self._sample_desired_vel()  # [0.3, 0.0, 0.0]
         # homogeneous values in input to the NN
         self._obs_scale = {
             "linear_velocity": 2.0,
@@ -400,7 +400,7 @@ class A1Env(MujocoEnv):
             + angular_vel_tracking_reward
             + healthy_reward
             + feet_air_time_reward
-            + trot_reward
+            # + trot_reward
         )
 
         # Negative Costs
@@ -435,7 +435,7 @@ class A1Env(MujocoEnv):
         foot_slip_cost = self.foot_slip_cost * self.cost_weights["foot_slip"]
         costs = (
             ctrl_cost
-            + body_height_cost
+            # + body_height_cost
             + action_rate_cost
             + vertical_vel_cost
             + xy_angular_vel_cost
@@ -443,11 +443,13 @@ class A1Env(MujocoEnv):
             + joint_acceleration_cost
             + orientation_cost
             + default_joint_position_cost
-            + flight_cost
-            + foot_slip_cost
+            # + flight_cost
+            # + foot_slip_cost
+            # + collision_cost
+            # + joint_velocity_cost
         )
 
-        reward = rewards - costs
+        reward = max(rewards - costs, 0.0)
         # reward = rewards - self.curriculum_factor * costs
         reward_info = {
             "linear_vel_tracking_reward": linear_vel_tracking_reward,
@@ -498,11 +500,12 @@ class A1Env(MujocoEnv):
 
     def reset_model(self):
         # Reset the position and control values with noise
-        self.data.qpos[:] = self.model.key_qpos[0] + self.np_random.uniform(
-            low=-self._reset_noise_scale,
-            high=self._reset_noise_scale,
-            size=self.model.nq,
-        )
+        # self.data.qpos[:] = self.model.key_qpos[0] + self.np_random.uniform(
+        #     low=-self._reset_noise_scale,
+        #     high=self._reset_noise_scale,
+        #     size=self.model.nq,
+        # )
+        self.data.qpos[:] = self.model.key_qpos[0]
         self.data.ctrl[:] = self.model.key_ctrl[
             0
         ] + self._reset_noise_scale * self.np_random.standard_normal(

@@ -21,7 +21,7 @@ model = PPO(
     n_steps=2048,
     batch_size=64,
 )
-model.learn(total_timesteps=10_000_000, progress_bar=True)
+model.learn(total_timesteps=2_000_000, progress_bar=True)
 
 model.save("ppo_a1")
 vec_env.save("vecnormalize_a1.pkl")
