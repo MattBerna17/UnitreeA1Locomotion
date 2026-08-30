@@ -9,7 +9,7 @@ vec_env = DummyVecEnv([
 ])
 vec_env = VecNormalize.load("vecnormalize_a1.pkl", vec_env)
 vec_env.training = False
-vec_env.norm_reward = False
+# vec_env.norm_reward = False
 
 
 # load the model

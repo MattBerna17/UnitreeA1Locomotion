@@ -156,7 +156,8 @@ class A1Env(MujocoEnv):
 
     def step(self, action):
         self._step += 1
-        self.do_simulation(action, self.frame_skip) # for each step, self.frame_skip frames in mujoco
+        scaled_action = self._default_joint_position + 0.25*action
+        self.do_simulation(scaled_action, self.frame_skip) # for each step, self.frame_skip frames in mujoco
 
         observation = self._get_obs() # after the action execution, get the resulting observations (new position of the robot)
         reward, reward_info = self._calc_reward(action)
@@ -239,8 +240,12 @@ class A1Env(MujocoEnv):
     ######### Positive Reward functions #########
     @property
     def linear_velocity_tracking_reward(self):
+        trunk_id = self.model.body("trunk").id
+        R_body_to_world = self.data.xmat[trunk_id].reshape(3, 3)
+        vel_world = self.data.qvel[:3]
+        vel_body = R_body_to_world.T @ vel_world  # robot's frame velocity
         vel_sqr_error = np.sum(
-            np.square(self._desired_velocity[:2] - self.data.qvel[:2])
+            np.square(self._desired_velocity[:2] - vel_body[:2])
         )
         return np.exp(-vel_sqr_error / self._tracking_velocity_sigma)
 
@@ -326,11 +331,8 @@ class A1Env(MujocoEnv):
 
     @property
     def collision_cost(self):
-        # Penalize collisions on selected bodies
-        return np.sum(
-            1.0
-            * (np.linalg.norm(self.data.cfrc_ext[self._cfrc_ext_contact_indices]) > 0.1)
-        )
+        forces = self.data.cfrc_ext[self._cfrc_ext_contact_indices]
+        return np.sum(np.linalg.norm(forces, axis=-1) > 0.1)
 
     @property
     def joint_limit_cost(self):
@@ -445,8 +447,8 @@ class A1Env(MujocoEnv):
             + default_joint_position_cost
             # + flight_cost
             # + foot_slip_cost
-            # + collision_cost
-            # + joint_velocity_cost
+            + collision_cost
+            + joint_velocity_cost
         )
 
         reward = max(rewards - costs, 0.0)
