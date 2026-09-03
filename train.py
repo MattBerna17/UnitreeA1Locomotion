@@ -1,10 +1,11 @@
 import mujoco
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
 from env1 import A1Env
 from stable_baselines3.common.env_checker import check_env
 
+ALGORITHM = SAC
 
 env = A1Env(render_mode=None)
 check_env(env, warn=True)
@@ -13,7 +14,7 @@ print("✅ check_env passed")
 vec_env = make_vec_env(lambda: A1Env(render_mode=None), n_envs=8)
 vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True)
 
-model = PPO(
+model = ALGORITHM(
     "MlpPolicy",
     vec_env,
     verbose=1,
@@ -21,7 +22,12 @@ model = PPO(
     n_steps=2048,
     batch_size=64,
 )
-model.learn(total_timesteps=2_000_000, progress_bar=True)
+model.learn(total_timesteps=3_000_000, progress_bar=True)
 
-model.save("ppo_a1")
-vec_env.save("vecnormalize_a1.pkl")
+
+if ALGORITHM == PPO:
+    model.save("ppo_a1_trajectories")
+    vec_env.save("ppo_vecnormalize_a1_trajectories.pkl")
+elif ALGORITHM == SAC:
+    model.save("sac_a1_trajectories")
+    vec_env.save("sac_vecnormalize_a1_trajectories.pkl")
