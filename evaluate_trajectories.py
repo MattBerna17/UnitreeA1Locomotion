@@ -69,6 +69,7 @@ def run_trajectory_episode(algo_name, model, vec_env, raw_env, traj_name, trajec
     mujoco.mj_forward(raw_env.model, raw_env.data)
 
     rows = []
+    # vel_over_time = []
     for step in range(MAX_STEPS):
         pos_xy = raw_env.data.qpos[:2].copy()
 
@@ -114,9 +115,13 @@ def run_trajectory_episode(algo_name, model, vec_env, raw_env, traj_name, trajec
         if viewer is not None:
             draw_trajectory(viewer, trajectory_xy)
             viewer.sync()
+        # vel_over_time.append(raw_env.data.qvel[6:].copy())
 
         if done[0]:
             break
+    
+    # vel_array = np.array(vel_over_time)
+    # print("std per joint:", vel_array.std(axis=0))
 
     return rows
 
@@ -125,7 +130,7 @@ def main():
     all_rows = []
 
     for algo_name, (algo_class, model_path, vecnorm_path) in MODELS.items():
-        print(f"\n=== model {algo_name} ===")
+        print(f"\nALGORITHM: {algo_name}")
 
         vec_env = DummyVecEnv([lambda: A1Env(render_mode=None)])
         vec_env = VecNormalize.load(vecnorm_path, vec_env)

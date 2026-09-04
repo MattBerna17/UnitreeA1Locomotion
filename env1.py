@@ -77,16 +77,13 @@ class A1Env(MujocoEnv):
         }
 
         self._gravity_vector = np.array(self.model.opt.gravity) # [0, 0, -9.81] gravity on mujoco simulation environment
-        self._default_joint_position = np.array(self.model.key_ctrl[0]) # position actuators (not torque actuators!)
+        self._default_joint_position = np.array(self.model.key_ctrl[0]) # position actuators (not torque actuators!) TODO: check if A1 has position or torque actuators
 
         # vx (m/s), vy (m/s), wz (rad/s)
         # desider velocity 0.5 m/s on the x axis, and avoid movement on the y and z axis
-        # WORKING
-        # self._desired_velocity_min = np.array([0.3, -0.0, -0.4])
-        # self._desired_velocity_max = np.array([0.3, 0.0, 0.4])
-        self._desired_velocity_min = np.array([0.3, -0.0, -1.0])
-        self._desired_velocity_max = np.array([0.3, 0.0, 1.0])
-        self._desired_velocity = self._sample_desired_vel()
+        self._desired_velocity_min = np.array([0.3, -0.0, -0.0])
+        self._desired_velocity_max = np.array([0.3, 0.0, 0.0])
+        self._desired_velocity = self._sample_desired_vel()  # [0.3, 0.0, 0.0]
         # homogeneous values in input to the NN
         self._obs_scale = {
             "linear_velocity": 2.0,
@@ -296,7 +293,7 @@ class A1Env(MujocoEnv):
         return trot
 
     ######### Negative Reward functions #########
-    @property
+    @property  # TODO: Not used
     def feet_contact_forces_cost(self):
         return np.sum(
             (self.feet_contact_forces - self._max_contact_force).clip(min=0.0)
@@ -383,6 +380,9 @@ class A1Env(MujocoEnv):
     
 
     def _calc_reward(self, action):
+        # TODO: Add debug mode with custom Tensorboard calls for individual reward
+        #   functions to get a better sense of the contribution of each reward function
+
         # Positive Rewards
         linear_vel_tracking_reward = (
             self.linear_velocity_tracking_reward
@@ -454,16 +454,15 @@ class A1Env(MujocoEnv):
         reward = max(rewards - costs, 0.0)
         # reward = rewards - self.curriculum_factor * costs
         reward_info = {
-            # "linear_vel_tracking_reward": linear_vel_tracking_reward,
-            # "trot_reward": trot_reward,
-            # "feet_air_time_reward": feet_air_time_reward,
-            # "reward_ctrl": -ctrl_cost,
-            # "reward_survive": healthy_reward,
-            # "foot_slip_cost": -foot_slip_cost,
-            # "body_height_cost": -body_height_cost,
-            # "rewards": rewards,
-            # "costs": costs
-            "reward_angular_vel_tracking": angular_vel_tracking_reward,
+            "linear_vel_tracking_reward": linear_vel_tracking_reward,
+            "trot_reward": trot_reward,
+            "feet_air_time_reward": feet_air_time_reward,
+            "reward_ctrl": -ctrl_cost,
+            "reward_survive": healthy_reward,
+            "foot_slip_cost": -foot_slip_cost,
+            "body_height_cost": -body_height_cost,
+            "rewards": rewards,
+            "costs": costs
         }
 
         return reward, reward_info

@@ -99,7 +99,7 @@ def main():
             learning_starts=10_000,
             batch_size=256,
             train_freq=1,
-            gradient_steps=1,
+            gradient_steps=8,
             tau=0.005,
             gamma=0.99,
             ent_coef="auto"
