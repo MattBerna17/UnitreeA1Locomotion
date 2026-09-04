@@ -81,9 +81,9 @@ class A1Env(MujocoEnv):
 
         # vx (m/s), vy (m/s), wz (rad/s)
         # desider velocity 0.5 m/s on the x axis, and avoid movement on the y and z axis
-        self._desired_velocity_min = np.array([0.3, -0.0, -0.0])
-        self._desired_velocity_max = np.array([0.3, 0.0, 0.0])
-        self._desired_velocity = self._sample_desired_vel()  # [0.3, 0.0, 0.0]
+        self._desired_velocity_min = np.array([0.3, -0.0, -1.0])
+        self._desired_velocity_max = np.array([0.3, 0.0, 1.0])
+        self._desired_velocity = self._sample_desired_vel()  # vx = 0.3, vy = 0.0, vz \in [-1, 1]
         # homogeneous values in input to the NN
         self._obs_scale = {
             "linear_velocity": 2.0,
