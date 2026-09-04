@@ -49,7 +49,7 @@ class A1Env(MujocoEnv):
             "render_fps": 60,
         }
         self._last_render_time = -1.0 # when the last rednering has happened
-        self._max_episode_time_sec = 60.0 # 60s max for each episode
+        self._max_episode_time_sec = 15.0 # 15s max for each episode
         self._step = 0 # number of decisions of the policy taken in an episode
 
         # weights for the reward and cost functions

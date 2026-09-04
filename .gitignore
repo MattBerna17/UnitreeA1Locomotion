@@ -11,3 +11,6 @@ tensorboard_logs/
 MUJOCO_LOG.TXT
 *.mp4
 *.mov
+main_ppo.py
+main_sac.py
+train_sac.py

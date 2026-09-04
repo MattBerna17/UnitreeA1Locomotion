@@ -1,147 +1,54 @@
 # Unitree A1 Reinforcement-Learning Locomotion
 
-This repository trains a Unitree A1 quadruped in MuJoCo to track a commanded
-body velocity. The custom Gymnasium environment uses the A1 model stored in
-`unitree_a1/scene.xml`; that scene includes `a1.xml` and its mesh assets.
+This repository trains a Unitree A1 quadruped in MuJoCo to track a commanded body velocity and follow complex reference trajectories. The custom Gymnasium environment uses the A1 model stored in `unitree_a1/scene.xml`.
 
-> This is a simulation project. A policy trained here must not be deployed on a
-> physical robot without separate safety, state-estimation, latency, actuator,
-> and sim-to-real validation work.
+> This is a simulation project. A policy trained here must not be deployed on a physical robot without separate safety, state-estimation, latency, actuator, and sim-to-real validation work.
 
-## Repository layout
+## Repository Layout
 
 | Path | Purpose |
-| --- | --- |
-| `env1.py` | `A1Env`, the custom Gymnasium/MuJoCo task and its reward, termination, observation, and action logic. |
-| `train.py` | PPO training entry point using 8 parallel environments and observation/reward normalization. |
-| `main.py` | Opens the MuJoCo viewer and runs a saved PPO policy. |
-| `unitree_a1/scene.xml` | MuJoCo scene with the floor; includes the A1 robot XML. |
-| `unitree_a1/a1.xml` | A1 model, 12 position actuators, joint limits, and the `home` keyframe. |
-| `environment.yml` | Portable Conda environment definition. |
-| `requirements.txt` | Equivalent pip dependency list. |
+| :--- | :--- |
+| `env1.py` | `A1Env`, the custom Gymnasium/MuJoCo task including reward, termination, observation, and action scaling logic. |
+| `train.py` | Training entry point supporting PPO, A2C, and SAC algorithms. |
+| `free_roam.py` | Script to open the MuJoCo viewer and run a saved policy with correct observation normalization. |
+| `evaluate_trajectories.py` | Evaluates the model on predefined trajectories (line, cosine, circle) using a high-level P-controller and logs tracking errors to a CSV. |
+| `trajectories.py` | Generates the mathematical reference paths and calculates the cross-track error. |
+| `unitree_a1/` | MuJoCo scene files and A1 robot XML assets. |
 
-## Environment design
+## Environment Design
 
-The A1 has a floating base and 12 position actuators: abduction, hip, and knee
-for each leg in FR, FL, RR, RL order. Therefore an action is a vector of 12
-joint-position targets, **not a torque vector**.
+* The A1 has a floating base and 12 position actuators.
+* Each policy decision advances 10 MuJoCo frames, resulting in a 50 Hz control rate (0.02s dt).
+* Episodes last up to 15 seconds.
+* The target velocity is dynamically sampled between `[0.3, -0.0, -1.0]` and `[0.3, 0.0, 1.0]` representing `(vx, vy, wz)`, allowing the robot to learn how to steer.
+* The 48-value observation includes base linear/angular velocity, projected gravity, desired velocity, joint positions relative to home, joint velocities, and the preceding action.
+* The reward combines linear and angular velocity tracking, healthy state, and foot-air-time terms.
+* Costs penalize actuator torque, vertical/angular velocity, abrupt action changes, joint limits, joint acceleration, base orientation, body height, flight phases, foot slip, and collisions.
 
-Each policy decision advances 10 MuJoCo steps. With the model's default
-0.002-second simulator timestep this corresponds to a 50 Hz control rate. An
-episode lasts up to 15 seconds and ends early when trunk height, roll, or pitch
-is outside the configured healthy range.
+## Training
 
-The 48-value observation is composed of base linear velocity, base angular
-velocity, gravity projected into the trunk frame, the desired velocity command,
-joint positions relative to the home pose, joint velocities, and the preceding
-action.
+The `train.py` script has been expanded to support multiple reinforcement learning architectures:
+* **PPO & A2C:** Run utilizing 8 parallel environments for 3,000,000 timesteps. Reward normalization is safely enabled as they are on-policy algorithms.
+* **SAC:** Runs utilizing 4 parallel environments for 1,000,000 timesteps. Reward normalization is strictly disabled to prevent replay buffer corruption over time. Action space is explicitly bounded to `[-1.0, 1.0]` for SAC compatibility.
 
-The current reward combines linear and angular velocity tracking, healthy state,
-diagonal-contact (trot), and foot-air-time terms. It subtracts costs for actuator
-effort, vertical and angular velocity, abrupt action changes, joint limits,
-joint acceleration, base orientation, body height, flight phases, and foot slip.
-
-## Prerequisites
-
-- Conda or Miniforge is recommended; Python 3.10 is used by the project.
-- A working OpenGL installation is needed to open the interactive MuJoCo viewer.
-- Run commands from the repository root, so `unitree_a1/scene.xml` resolves
-  correctly.
-
-## Installation
-
-### Option A — Conda (recommended)
-
-```bash
-conda env create -f environment.yml
-conda activate a1-rl
-```
-
-To update an existing environment after a dependency change:
-
-```bash
-conda env update -n a1-rl -f environment.yml --prune
-```
-
-### Option B — pip and a virtual environment
-
-```bash
-python3.10 -m venv .venv
-source .venv/bin/activate              # macOS/Linux
-# .venv\Scripts\activate               # Windows PowerShell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-## Train
-
-Before running the current `train.py`, make this one-line correction. `A1Env`
-already supplies the XML model path internally, and Gymnasium's `MujocoEnv`
-does not accept `xml_path` as a keyword argument.
-
-```python
-# Replace this:
-env = A1Env(xml_path="./unitree_a1/scene.xml", render_mode=None)
-
-# With this:
-env = A1Env(render_mode=None)
-```
-
-Then run:
-
+To train a model, set the `ALGORITHM` variable inside the script and run:
 ```bash
 python train.py
+
 ```
 
-The script first runs Gymnasium's environment checker, trains PPO for
-10,000,000 transitions, and writes:
+## Evaluation & Trajectory Tracking
 
-- `ppo_a1.zip` — learned PPO policy;
-- `vecnormalize_a1.pkl` — normalization statistics required at evaluation time;
-- `tensorboard_logs/` — TensorBoard event files.
+### Free Roam
 
-Monitor the run in a second terminal:
+`free_roam.py` loads the saved model (`.zip`) alongside its `VecNormalize` statistics (`.pkl`). This guarantees the policy receives observations on the exact same mathematical scale used during training.
 
-```bash
-conda activate a1-rl
-tensorboard --logdir tensorboard_logs
-```
+### Closed-Loop Navigation
 
-Open the displayed local URL in a browser.
+`evaluate_trajectories.py` tests the robot's ability to navigate continuous curves:
 
-## Run a trained policy
-
-`main.py` loads `ppo_a1.zip` and opens the MuJoCo viewer:
-
-```bash
-python main.py
-```
-
-The evaluation environment must use the same observation normalization saved in
-`vecnormalize_a1.pkl`. The current `main.py` loads the PPO file directly but
-does **not** restore `VecNormalize`; this gives the policy observations on a
-different scale from training. Update it to load the saved normalization wrapper
-before treating the viewer behaviour as a valid evaluation result.
-
-## Reproducibility and repository hygiene
-
-- Commit source files, XML assets, `environment.yml`, `requirements.txt`, this
-  README, and small configuration files.
-- Do not commit `.venv/`, `__pycache__/`, TensorBoard logs, videos, or large
-  checkpoints. Keep a selected released checkpoint only if its size is
-  acceptable, otherwise use Git LFS or a release/archive store.
-- When dependencies change, edit the short dependency lists deliberately; do
-  not commit a full OS-specific `conda env export` unless the exact machine
-  build is required for archival reproducibility.
-
-## Important training notes
-
-- The desired forward velocity is currently fixed at 2.5 m/s in `env1.py`.
-  This is a demanding initial target. For gait bootstrapping, begin at a lower
-  speed (for example 0.2–0.8 m/s) and broaden the command range only after the
-  robot walks stably.
-- Do not use joint actions or the home `qpos` vector as a distance reward. True
-  forward progress is the change in trunk world `x` position; velocity tracking
-  is usually the more controlled objective for a commanded walking task.
-- The reward weights are hyperparameters. Log every component and compare their
-  magnitudes before changing several terms at once.
+* It utilizes a high-level P-controller to calculate the angular velocity command (`wz`) based on the heading error towards a lookahead point on the reference trajectory.
+* The angular command is saturated at `1.0` rad/s to respect the bounds of the training domain.
+* A green capsule rendering is injected directly into the MuJoCo viewer to visualize the path.
+* The script automatically stops when the robot is within 15 cm of the final trajectory point.
+* Detailed tracking metrics (cross-track error, physical positions, commands) are exported to `trajectory_tracking_results.csv`.

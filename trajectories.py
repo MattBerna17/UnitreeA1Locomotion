@@ -1,42 +1,37 @@
-"""
-Traiettorie di riferimento per testare il tracking del robot A1, e
-funzioni di supporto per calcolare la distanza (cross-track error) tra
-la posizione del robot e il percorso.
-"""
+# trajectories to test the different algorithms applied to the A1 robot
 
 import numpy as np
 
 
 def line_trajectory(length=6.0, n_points=600):
-    """Linea retta lungo l'asse x, partendo dall'origine."""
+    """
+    Straight line from the origin
+    """
     x = np.linspace(0, length, n_points)
     y = np.zeros_like(x)
     return np.stack([x, y], axis=1)
 
 
 def sine_trajectory(length=6.0, amplitude=0.5, wavelength=2.5, n_points=600):
-    """Traiettoria sinusoidale, avanzamento lungo x, oscillazione su y."""
+    """
+    Sine trajectory
+    """
     x = np.linspace(0, length, n_points)
     y = amplitude * np.sin(2 * np.pi * x / wavelength)
     return np.stack([x, y], axis=1)
 
 def cosine_trajectory(length=6.0, amplitude=0.15, wavelength=3.0, n_points=600):
     """
-    Traiettoria cosinusoidale con ampiezza ridotta.
-    La formula A * (1 - cos(kx)) garantisce che la curva parta da y=0 
-    con una tangente perfettamente parallela all'asse X, permettendo al 
-    robot di partire dritto senza scatti iniziali.
+    Cosine trajectory squeezed
     """
     x = np.linspace(0, length, n_points)
-    # 1 - cos(...) fa partire la traiettoria dolce dall'origine
     y = amplitude * (1 - np.cos(2 * np.pi * x / wavelength))
     return np.stack([x, y], axis=1)
 
 
 def circle_trajectory(radius=2.0, n_points=600):
     """
-    Traiettoria circolare, tangente all'asse x nell'origine (il robot
-    parte "dritto" e la curvatura comincia gradualmente).
+    Circular trajectory
     """
     theta = np.linspace(0, 2 * np.pi, n_points)
     x = radius * np.sin(theta)
@@ -46,8 +41,7 @@ def circle_trajectory(radius=2.0, n_points=600):
 
 def closest_point_on_trajectory(position_xy, trajectory_xy):
     """
-    Ritorna (distanza minima, indice del punto piu' vicino) tra la
-    posizione data e la traiettoria discretizzata.
+    Returns (min distance, index of nearest point) from the position and the trajectory passed
     """
     diffs = trajectory_xy - position_xy[None, :]
     dists = np.linalg.norm(diffs, axis=1)
