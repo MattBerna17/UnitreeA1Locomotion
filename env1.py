@@ -52,7 +52,7 @@ class A1Env(MujocoEnv):
         self._max_episode_time_sec = 15.0 # 15s max for each episode
         self._step = 0 # number of decisions of the policy taken in an episode
 
-        # weights for the reward and cost functions
+        # weights for the reward and penalty functions
         self.reward_weights = {
             "linear_vel_tracking": 2.0, # main goal whose weight encourages the model to move
             "angular_vel_tracking": 1.0,
@@ -60,7 +60,7 @@ class A1Env(MujocoEnv):
             "trot": 0.5, # reward positively the trotting movement
             "feet_airtime": 1.0, # encourages the model to keep legs up. prevents the robot from dragging itself
         }
-        self.cost_weights = {
+        self.penalty_weights = {
             "torque": 0.0002,
             "vertical_vel": 2.0, # penalizes useless jumps and encourages stable z position
             "xy_angular_vel": 0.05, # if it rotates on x or y
@@ -294,13 +294,13 @@ class A1Env(MujocoEnv):
 
     ######### Negative Reward functions #########
     @property  # TODO: Not used
-    def feet_contact_forces_cost(self):
+    def feet_contact_forces_penalty(self):
         return np.sum(
             (self.feet_contact_forces - self._max_contact_force).clip(min=0.0)
         )
 
     @property
-    def foot_slip_cost(self):
+    def foot_slip_penalty(self):
         """
         Penalize the horizontal movement when foot touch the ground
         """
@@ -309,7 +309,7 @@ class A1Env(MujocoEnv):
         return np.sum(np.square(feet_xy_vel) * curr_contact[:, None])
 
     @property
-    def flight_cost(self):
+    def flight_penalty(self):
         """
         Penalize when none of the legs is on the ground
         """
@@ -317,25 +317,25 @@ class A1Env(MujocoEnv):
         return float(not np.any(contact))
 
     @property
-    def body_height_cost(self):
+    def body_height_penalty(self):
         """
-        Cost function to penalize eccessive height of the trunk of the robot
+        penalty function to penalize eccessive height of the trunk of the robot
         """
         target_height = 0.27
         return np.square(self.data.qpos[2] - target_height)
 
     @property
-    def non_flat_base_cost(self):
+    def non_flat_base_penalty(self):
         # Penalize the robot for not being flat on the ground
         return np.sum(np.square(self.proj_gravity[:2]))
 
     @property
-    def collision_cost(self):
+    def collision_penalty(self):
         forces = self.data.cfrc_ext[self._cfrc_ext_contact_indices]
         return np.sum(np.linalg.norm(forces, axis=-1) > 0.1)
 
     @property
-    def joint_limit_cost(self):
+    def joint_limit_penalty(self):
         # Penalize the robot for joints exceeding the soft control range
         out_of_range = (self._soft_joint_range[:, 0] - self.data.qpos[7:]).clip(
             min=0.0
@@ -343,38 +343,38 @@ class A1Env(MujocoEnv):
         return np.sum(out_of_range)
 
     @property
-    def torque_cost(self):
+    def torque_penalty(self):
         # Last 12 values are the motor torques
         return np.sum(np.square(self.data.qfrc_actuator[-12:]))
 
     @property
-    def vertical_velocity_cost(self):
+    def vertical_velocity_penalty(self):
         return np.square(self.data.qvel[2])
 
     @property
-    def xy_angular_velocity_cost(self):
+    def xy_angular_velocity_penalty(self):
         return np.sum(np.square(self.data.qvel[3:5]))
 
-    def action_rate_cost(self, action):
+    def action_rate_penalty(self, action):
         return np.sum(np.square(self._last_action - action))
 
     @property
-    def joint_velocity_cost(self):
+    def joint_velocity_penalty(self):
         return np.sum(np.square(self.data.qvel[6:]))
 
     @property
-    def acceleration_cost(self):
+    def acceleration_penalty(self):
         return np.sum(np.square(self.data.qacc[6:]))
 
     @property
-    def default_joint_position_cost(self):
+    def default_joint_position_penalty(self):
         """
         Penalizes the distance from the base configuration of the joints
         """
         return np.sum(np.square(self.data.qpos[7:] - self._default_joint_position))
 
     @property
-    def smoothness_cost(self):
+    def smoothness_penalty(self):
         return np.sum(np.square(self.data.qpos[7:] - self._last_action))
 
     
@@ -405,64 +405,64 @@ class A1Env(MujocoEnv):
             # + trot_reward
         )
 
-        # Negative Costs
-        body_height_cost = (
-            self.body_height_cost
-            * self.cost_weights["body_height"]
+        # Negative penalties
+        body_height_penalty = (
+            self.body_height_penalty
+            * self.penalty_weights["body_height"]
         )
-        ctrl_cost = self.torque_cost * self.cost_weights["torque"]
-        action_rate_cost = (
-            self.action_rate_cost(action) * self.cost_weights["action_rate"]
+        ctrl_penalty = self.torque_penalty * self.penalty_weights["torque"]
+        action_rate_penalty = (
+            self.action_rate_penalty(action) * self.penalty_weights["action_rate"]
         )
-        vertical_vel_cost = (
-            self.vertical_velocity_cost * self.cost_weights["vertical_vel"]
+        vertical_vel_penalty = (
+            self.vertical_velocity_penalty * self.penalty_weights["vertical_vel"]
         )
-        xy_angular_vel_cost = (
-            self.xy_angular_velocity_cost * self.cost_weights["xy_angular_vel"]
+        xy_angular_vel_penalty = (
+            self.xy_angular_velocity_penalty * self.penalty_weights["xy_angular_vel"]
         )
-        joint_limit_cost = self.joint_limit_cost * self.cost_weights["joint_limit"]
-        joint_velocity_cost = (
-            self.joint_velocity_cost * self.cost_weights["joint_velocity"]
+        joint_limit_penalty = self.joint_limit_penalty * self.penalty_weights["joint_limit"]
+        joint_velocity_penalty = (
+            self.joint_velocity_penalty * self.penalty_weights["joint_velocity"]
         )
-        joint_acceleration_cost = (
-            self.acceleration_cost * self.cost_weights["joint_acceleration"]
+        joint_acceleration_penalty = (
+            self.acceleration_penalty * self.penalty_weights["joint_acceleration"]
         )
-        orientation_cost = self.non_flat_base_cost * self.cost_weights["orientation"]
-        collision_cost = self.collision_cost * self.cost_weights["collision"]
-        default_joint_position_cost = (
-            self.default_joint_position_cost
-            * self.cost_weights["default_joint_position"]
+        orientation_penalty = self.non_flat_base_penalty * self.penalty_weights["orientation"]
+        collision_penalty = self.collision_penalty * self.penalty_weights["collision"]
+        default_joint_position_penalty = (
+            self.default_joint_position_penalty
+            * self.penalty_weights["default_joint_position"]
         )
-        flight_cost = self.flight_cost * self.cost_weights["flight"]
-        foot_slip_cost = self.foot_slip_cost * self.cost_weights["foot_slip"]
-        costs = (
-            ctrl_cost
-            # + body_height_cost
-            + action_rate_cost
-            + vertical_vel_cost
-            + xy_angular_vel_cost
-            + joint_limit_cost
-            + joint_acceleration_cost
-            + orientation_cost
-            + default_joint_position_cost
-            # + flight_cost
-            # + foot_slip_cost
-            + collision_cost
-            + joint_velocity_cost
+        flight_penalty = self.flight_penalty * self.penalty_weights["flight"]
+        foot_slip_penalty = self.foot_slip_penalty * self.penalty_weights["foot_slip"]
+        penalties = (
+            ctrl_penalty
+            # + body_height_penalty
+            + action_rate_penalty
+            + vertical_vel_penalty
+            + xy_angular_vel_penalty
+            + joint_limit_penalty
+            + joint_acceleration_penalty
+            + orientation_penalty
+            + default_joint_position_penalty
+            # + flight_penalty
+            # + foot_slip_penalty
+            + collision_penalty
+            + joint_velocity_penalty
         )
 
-        reward = max(rewards - costs, 0.0)
-        # reward = rewards - self.curriculum_factor * costs
+        reward = max(rewards - penalties, 0.0)
+        # reward = rewards - self.curriculum_factor * penalties
         reward_info = {
             "linear_vel_tracking_reward": linear_vel_tracking_reward,
             "trot_reward": trot_reward,
             "feet_air_time_reward": feet_air_time_reward,
-            "reward_ctrl": -ctrl_cost,
+            "reward_ctrl": -ctrl_penalty,
             "reward_survive": healthy_reward,
-            "foot_slip_cost": -foot_slip_cost,
-            "body_height_cost": -body_height_cost,
+            "foot_slip_penalty": -foot_slip_penalty,
+            "body_height_penalty": -body_height_penalty,
             "rewards": rewards,
-            "costs": costs
+            "penalties": penalties
         }
 
         return reward, reward_info
@@ -534,9 +534,7 @@ class A1Env(MujocoEnv):
         }
 
     def _sample_desired_vel(self):
-        desired_vel = np.random.default_rng().uniform(
-            low=self._desired_velocity_min, high=self._desired_velocity_max
-        )
+        desired_vel = self.np_random.uniform(low=self._desired_velocity_min, high=self._desired_velocity_max)
         return desired_vel
 
     @staticmethod
