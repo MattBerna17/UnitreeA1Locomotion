@@ -112,8 +112,8 @@ Below are the visual recordings of the policies attempting the trajectory tracki
 
 **PPO Trajectory Tracking**  
 *(Displays a stable, rhythmic trot with excellent cross-track adherence)*  
-<video src="ppo trajectory.mov" controls="controls" width="100%"></video>
+[![PPO Trajectory Tracking](https://img.youtube.com/vi/8_3IQFpWdJk/0.jpg)](https://youtu.be/8_3IQFpWdJk)
 
 **SAC Trajectory Tracking**  
 *(Displays an asymmetric, high-frequency gait pattern)*  
-<video src="sac trajectory.mov" controls="controls" width="100%"></video>
+[![SAC Trajectory Tracking](https://img.youtube.com/vi/EeV1KnvGf2c/0.jpg)](https://youtu.be/EeV1KnvGf2c)
