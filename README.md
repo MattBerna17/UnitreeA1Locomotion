@@ -6,21 +6,21 @@
 ![Gymnasium](https://img.shields.io/badge/Gymnasium-1D1D1D?style=for-the-badge)
 ![Unitree A1](https://img.shields.io/badge/Unitree_A1-FF6600?style=for-the-badge)
 
-This repository trains a Unitree A1 quadruped in MuJoCo to track a commanded body velocity and follow complex reference trajectories[cite: 10]. The custom Gymnasium environment uses the A1 model stored in `unitree_a1/scene.xml`[cite: 10].
+This repository trains a Unitree A1 quadruped in MuJoCo to track a commanded body velocity and follow complex reference trajectories. The custom Gymnasium environment uses the A1 model stored in `unitree_a1/scene.xml`.
 
-> This is a simulation project. A policy trained here must not be deployed on a physical robot without separate safety, state-estimation, latency, actuator, and sim-to-real validation work[cite: 10].
+> This is a simulation project. A policy trained here must not be deployed on a physical robot without separate safety, state-estimation, latency, actuator, and sim-to-real validation work.
 
 ## Repository Layout
 
 | Path | Purpose |
 | :--- | :--- |
-| `env1.py` | `A1Env`, the custom Gymnasium/MuJoCo task including reward, termination, observation, and action scaling logic[cite: 10]. |
-| `train.py` | Training entry point supporting PPO, A2C, and SAC algorithms[cite: 10]. |
-| `free_roam.py` | Script to open the MuJoCo viewer and run a saved policy with correct observation normalization[cite: 10]. |
-| `evaluate_trajectories.py` | Evaluates the model on predefined trajectories (line, cosine, circle) using a high-level P-controller and logs tracking errors to a CSV[cite: 10]. |
+| `env1.py` | `A1Env`, the custom Gymnasium/MuJoCo task including reward, termination, observation, and action scaling logic. |
+| `train.py` | Training entry point supporting PPO and SAC algorithms. |
+| `free_roam.py` | Script to open the MuJoCo viewer and run a saved policy with correct observation normalization. |
+| `evaluate_trajectories.py` | Evaluates the model on predefined trajectories (line, cosine, circle) using a high-level P-controller and logs tracking errors to a CSV. |
 | `plot_trajectories.py` | Generates a 1x3 analytical dashboard comparing algorithms based on the CSV data. |
-| `trajectories.py` | Generates the mathematical reference paths and calculates the cross-track error[cite: 10]. |
-| `unitree_a1/` | MuJoCo scene files and A1 robot XML assets[cite: 10]. |
+| `trajectories.py` | Generates the mathematical reference paths and calculates the cross-track error. |
+| `unitree_a1/` | MuJoCo scene files and A1 robot XML assets. |
 
 ## Quick Start & Execution
 
@@ -73,7 +73,7 @@ python plot_trajectories.py
 
 The `train.py` script has been expanded to support multiple reinforcement learning architectures:
 
-* **PPO & A2C:** Run utilizing 8 parallel environments for 3,000,000 timesteps. Reward normalization is safely enabled as they are on-policy algorithms.
+* **PPO:** Run utilizing 8 parallel environments for 3,000,000 timesteps. Reward normalization is safely enabled as they are on-policy algorithms.
 
 
 * **SAC:** Runs utilizing 4 parallel environments for 1,000,000 timesteps. Reward normalization is strictly disabled to prevent replay buffer corruption over time. Action space is explicitly bounded to `[-1.0, 1.0]` for SAC compatibility.
