@@ -24,11 +24,12 @@ if algorithm == "PPO":
     vec_env.training = False
     vec_env.norm_reward = False
     model = PPO.load("ppo_a1_trajectories", env=vec_env)
+    raw_env = vec_env.venv.envs[0] 
 
 elif algorithm == "SAC":
-    # Creazione ambiente liscio senza wrapper di normalizzazione
     vec_env = DummyVecEnv([make_eval_env])
     model = SAC.load("sac_a1_trajectories", env=vec_env)
+    raw_env = vec_env.envs[0]
 
 else:
     raise ValueError("Non valid algorithm")
@@ -36,6 +37,8 @@ else:
 obs = vec_env.reset()
 
 while True:
+    raw_env._desired_velocity[2] = 0.0
+    
     action, _ = model.predict(obs, deterministic=True)
     obs, reward, done, info = vec_env.step(action)
 
