@@ -19,7 +19,7 @@ def generate_comparison_dashboard(csv_path="trajectory_tracking_results.csv", tr
     fig, axs = plt.subplots(1, 3, figsize=(18, 5))
     fig.suptitle(f"Tracking Performance: PPO vs SAC ({trajectory_name.capitalize()})", fontsize=16, fontweight='bold', y=1.05)
     
-    # 1. Traiettoria XY (top-down view)
+    # 1. Trajectory XY (top-down view)
     sns.scatterplot(data=df_traj, x="x", y="y", hue="algorithm", s=15, edgecolor=None, ax=axs[0], palette="Set1")
     axs[0].set_title("Top-Down Path")
     axs[0].set_xlabel("X (m)")
