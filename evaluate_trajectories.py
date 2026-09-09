@@ -21,8 +21,8 @@ from trajectories import TRAJECTORIES, closest_point_on_trajectory
 
 # configuration
 MODELS = {
-    "PPO": (PPO, "ppo_a1_trajectories.zip", "ppo_vecnormalize_a1_trajectories.pkl"),
-    "SAC": (SAC, "sac_a1_trajectories.zip", None),
+    "PPO": (PPO, "ppo_a1_trajectories_seed_15.zip", "ppo_vecnormalize_a1_trajectories_seed_15.pkl"),
+    "SAC": (SAC, "sac_a1_trajectories_seed_15.zip", None),
 }
 
 RENDER = True          
@@ -33,7 +33,7 @@ LOOKAHEAD_POINTS = 8
 KP_HEADING = 2.0
 WZ_MAX = 1.0           
 
-OUTPUT_CSV = "trajectory_tracking_results.csv"
+OUTPUT_CSV = "trajectory_tracking_results_.csv"
 TRAJECTORY_Z = 0.02    
 
 # visualization
@@ -128,13 +128,13 @@ def run_trajectory_episode(algo_name, model, vec_env, raw_env, traj_name, trajec
 
 def make_eval_env(algo_name):
     env = A1Env(render_mode=None)
-    if algo_name == "SAC":
-        env.action_space = spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=(env.model.nu,),
-            dtype=np.float32,
-        )
+    # if algo_name == "SAC":
+    #     env.action_space = spaces.Box(
+    #         low=-1.0,
+    #         high=1.0,
+    #         shape=(env.model.nu,),
+    #         dtype=np.float32,
+    #     )
     return env
 
 # plotting function

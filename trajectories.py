@@ -41,12 +41,28 @@ def circle_trajectory(radius=2.0, n_points=600):
 
 def closest_point_on_trajectory(position_xy, trajectory_xy):
     """
-    Returns (min distance, index of nearest point) from the position and the trajectory passed
+    Returns (min distance, index of nearest segment start) from the position and the trajectory.
+    Calculates the orthogonal distance to the line segments connecting the points
+    to eliminate discretization aliasing.
     """
-    diffs = trajectory_xy - position_xy[None, :]
-    dists = np.linalg.norm(diffs, axis=1)
+    A = trajectory_xy[:-1]
+    B = trajectory_xy[1:]
+    
+    AB = B - A
+    AP = position_xy - A
+    
+    dot_AP_AB = np.sum(AP * AB, axis=1)
+    dot_AB_AB = np.sum(AB * AB, axis=1)
+    
+    t = np.clip(dot_AP_AB / dot_AB_AB, 0.0, 1.0)
+    
+    C = A + t[:, np.newaxis] * AB
+    
+    dists = np.linalg.norm(position_xy - C, axis=1)
     idx = int(np.argmin(dists))
-    return float(dists[idx]), idx
+    min_dist = float(dists[idx])
+    
+    return min_dist, idx
 
 
 TRAJECTORIES = {

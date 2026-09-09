@@ -472,13 +472,14 @@ class A1Env(MujocoEnv):
         # The second four are the quaternion representing the orientation of the robot
         # The above seven values are ignored since they are privileged information
         # The remaining 12 values are the joint positions
-        dofs_position = self.data.qpos[7:] - self._default_joint_position # The joint positions are relative to the starting position
+        dofs_position = self.data.qpos[7:] - self._default_joint_position
+        
+        # transform linear velocity in body frame from world frame
+        trunk_id = self.model.body("trunk").id
+        R_body_to_world = self.data.xmat[trunk_id].reshape(3, 3)
+        base_linear_velocity = R_body_to_world.T @ self.data.qvel[:3] 
 
-        # The first three values are the global linear velocity of the robot
-        # The second three are the angular velocity of the robot
-        # The remaining 12 values are the joint velocities
         velocity = self.data.qvel.flatten()
-        base_linear_velocity = velocity[:3]
         base_angular_velocity = velocity[3:6]
         dofs_velocity = velocity[6:]
 
@@ -486,15 +487,22 @@ class A1Env(MujocoEnv):
         last_action = self._last_action
         projected_gravity = self.proj_gravity
 
+        # scale desired velocities by observation scale
+        scaled_desired_vel = np.array([
+            desired_vel[0] * self._obs_scale["linear_velocity"],
+            desired_vel[1] * self._obs_scale["linear_velocity"],
+            desired_vel[2] * self._obs_scale["angular_velocity"]
+        ])
+
         curr_obs = np.concatenate(
             (
                 base_linear_velocity * self._obs_scale["linear_velocity"],
                 base_angular_velocity * self._obs_scale["angular_velocity"],
                 projected_gravity,
-                desired_vel * self._obs_scale["linear_velocity"],
+                scaled_desired_vel,
                 dofs_position * self._obs_scale["dofs_position"],
                 dofs_velocity * self._obs_scale["dofs_velocity"],
-                last_action, # to produce a smoother sequence of commands (and we penalize the difference with respect to the previous action taken by the policy)
+                last_action,
             )
         ).clip(-self._clip_obs_threshold, self._clip_obs_threshold)
 

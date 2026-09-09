@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def generate_comparison_dashboard(csv_path="trajectory_tracking_results.csv", trajectory_name="circle"):
+def generate_comparison_dashboard(csv_path="trajectory_tracking_results_.csv", trajectory_name="circle"):
     try:
         df = pd.read_csv(csv_path)
     except FileNotFoundError:
