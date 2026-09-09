@@ -18,9 +18,8 @@ This repository trains a Unitree A1 quadruped in MuJoCo to track a commanded bod
 | `train.py` | Training entry point supporting PPO and SAC algorithms. |
 | `free_roam.py` | Script to open the MuJoCo viewer and run a saved policy with correct observation normalization. |
 | `evaluate_trajectories.py` | Evaluates the model on predefined trajectories (line, cosine, circle) using a high-level P-controller and logs tracking errors to a CSV. |
-| `plot_trajectories.py` | Generates a 1x3 analytical dashboard comparing algorithms based on the CSV data. |
-| `trajectories.py` | Generates the mathematical reference paths and calculates the cross-track error. |
-| `unitree_a1/` | MuJoCo scene files and A1 robot XML assets. |
+| `plot_trajectories.py` | Generates analytical dashboards comparing algorithms based on the CSV data. |
+| `trajectories.py` | Generates the mathematical reference paths and calculates the cross-track error using orthogonal projection. |
 
 ## Quick Start & Execution
 
@@ -47,36 +46,30 @@ python plot_trajectories.py
 
 ## Environment Design
 
-* The A1 has a floating base and 12 position actuators.
+* The A1 utilizes position actuators rather than pure torque control. Position control explicitly delegates high-frequency PD torque calculations to the lower-level solver, which mitigates the *sim-to-real* reality gap by protecting the physical robot from chaotic Out-of-Distribution network outputs.
 
 
-* Each policy decision advances 10 MuJoCo frames, resulting in a 50 Hz control rate (0.02s dt).
+* The control frequency is set to 50 Hz, achieved by skipping 10 MuJoCo frames per policy step (0.02s dt).
 
 
-* Episodes last up to 15 seconds.
+* The network output relies on Residual Control: actions are scaled by a factor of `0.25` and added to the robot's default joint positions.
 
 
 * The target velocity is dynamically sampled between `[0.3, -0.0, -1.0]` and `[0.3, 0.0, 1.0]` representing `(vx, vy, wz)`, allowing the robot to learn how to steer.
 
 
-* The 48-value observation includes base linear/angular velocity, projected gravity, desired velocity, joint positions relative to home, joint velocities, and the preceding action.
-
-
-* The reward combines linear and angular velocity tracking, healthy state, and foot-air-time terms.
-
-
-* Costs penalize actuator torque, vertical/angular velocity, abrupt action changes, joint limits, joint acceleration, base orientation, body height, flight phases, foot slip, and collisions.
+* The final step reward is clamped at zero using `max(rewards - penalties, 0.0)`. This Reward Shaping strategy prevents the *early termination anomaly* (policy suicide), ensuring the agent is incentivized to explore suboptimal gaits rather than intentionally crashing the robot to avoid accumulating negative scores.
 
 
 
 ## Training
 
-The `train.py` script has been expanded to support multiple reinforcement learning architectures:
+The `train.py` script supports multiple reinforcement learning architectures, highlighting the trade-off between sample efficiency and computational overhead:
 
-* **PPO:** Run utilizing 8 parallel environments for 3,000,000 timesteps. Reward normalization is safely enabled as they are on-policy algorithms.
+* **PPO:** Configured with a batch size of 64 and 2048 n_steps. It is highly stable and computationally fast (wall-clock time), leveraging large rollout buffers. Reward normalization is safely enabled via `VecNormalize` as it relies on on-policy data collection.
 
 
-* **SAC:** Runs utilizing 4 parallel environments for 1,000,000 timesteps. Reward normalization is strictly disabled to prevent replay buffer corruption over time. Action space is explicitly bounded to `[-1.0, 1.0]` for SAC compatibility.
+* **SAC:** Configured with `ent_coef="auto"` to maximize entropy for robust gait exploration, and performs 8 gradient steps per environment step. Reward normalization is strictly disabled to prevent replay buffer non-stationarity over time.
 
 
 
@@ -84,25 +77,25 @@ The `train.py` script has been expanded to support multiple reinforcement learni
 
 ### Free Roam
 
-`free_roam.py` loads the saved model (`.zip`) alongside its `VecNormalize` statistics (`.pkl`). This guarantees the policy receives observations on the exact same mathematical scale used during training.
+`free_roam.py` loads the saved model alongside its `VecNormalize` statistics (for PPO). This guarantees the policy receives observations on the exact same mathematical scale used during training.
 
 ### Closed-Loop Navigation
 
 `evaluate_trajectories.py` tests the robot's ability to navigate continuous curves:
 
-* It utilizes a high-level P-controller to calculate the angular velocity command (`wz`) based on the heading error towards a lookahead point on the reference trajectory.
+* It utilizes a high-level P-controller (`KP_HEADING = 2.0`) to calculate the angular velocity command (`wz`) based on the heading error towards a lookahead point on the reference trajectory.
+
+
+* **High-Precision Tracking Metric:** Cross-track error is evaluated by calculating the orthogonal projection of the robot's position onto the continuous trajectory segments. This eliminates spatial aliasing (sawtooth noise) caused by discrete point nearest-neighbor algorithms, providing a true sub-millimeter Mean Absolute Error (MAE) evaluation.
 
 
 * The angular command is saturated at `1.0` rad/s to respect the bounds of the training domain.
 
 
-* A green capsule rendering is injected directly into the MuJoCo viewer to visualize the path.
+* The evaluation automatically terminates when the robot reaches within 20 cm of the final trajectory point.
 
 
-* The script automatically stops when the robot is within 15 cm of the final trajectory point.
-
-
-* Detailed tracking metrics (cross-track error, physical positions, commands) are exported to `trajectory_tracking_results.csv`.
+* The script generates a comprehensive 2x2 joint angle plot separating the behavior of the FR, FL, RR, and RL legs during locomotion.
 
 
 
@@ -110,10 +103,14 @@ The `train.py` script has been expanded to support multiple reinforcement learni
 
 Below are the visual recordings of the policies attempting the trajectory tracking task. The differences in gait and stability reflect the divergent learning strategies of on-policy versus off-policy algorithms.
 
-**PPO Trajectory Tracking**  
-*(Displays a stable, rhythmic trot with excellent cross-track adherence)*  
-[![PPO Trajectory Tracking](https://img.youtube.com/vi/8_3IQFpWdJk/0.jpg)](https://youtu.be/8_3IQFpWdJk)
+**PPO Trajectory Tracking**
 
-**SAC Trajectory Tracking**  
-*(Displays an asymmetric, high-frequency gait pattern)*  
-[![SAC Trajectory Tracking](https://img.youtube.com/vi/EeV1KnvGf2c/0.jpg)](https://youtu.be/EeV1KnvGf2c)
+*(Displays a stable, rhythmic trot with excellent cross-track adherence)*
+[![PPO Trajectory Tracking](https://img.youtube.com/vi/8_3IQFpWdJk/0.jpg)](https://youtu.be/fdHoaDwx9yg)
+
+**SAC Trajectory Tracking**
+
+*(Displays an asymmetric, high-frequency gait pattern)*
+[![SAC Trajectory Tracking](https://img.youtube.com/vi/EeV1KnvGf2c/0.jpg)](https://youtu.be/RwWdwD8RRy0)
+
+```
